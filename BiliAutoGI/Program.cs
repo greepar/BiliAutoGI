@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace BiliAutoGI;
 
@@ -8,7 +9,15 @@ public static class Program
     {
         Console.WriteLine("使用说明:1.放入直播播放的视频stream.mp4在同目录下(确保视频大于70min，否则直播不能够完成)\n2.确保ffmpeg在同目录下或者在系统环境里\n3.如已明白按任意键继续");
         Console.ReadKey();
-        if (!File.Exists(Path.Combine(Directory.GetCurrentDirectory(), "stream.mp4")))
+        
+        string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
+        string ffmpegFile = Path.Combine(currentDirectory, "ffmpeg.exe");
+        
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            ffmpegFile = "ffmpeg";
+        }
+        if (!File.Exists(Path.Combine(currentDirectory, "stream.mp4")))
         {
             Console.WriteLine("直播视频stream.mp4不存在，请放入同目录下");
             Console.ReadKey();
@@ -19,7 +28,7 @@ public static class Program
             //check
             Console.WriteLine("stream.mp4存在");
             //check
-            if (!File.Exists(Path.Combine(Directory.GetCurrentDirectory(), "ffmpeg")))
+            if (!File.Exists(ffmpegFile))
             {
                 Console.WriteLine("ffmpeg.exe不存在，请检查");
                 Console.ReadKey();
@@ -30,27 +39,27 @@ public static class Program
                 //check
                 Console.WriteLine("ffmpeg存在");
                 //check
-                Process.Start(Path.Combine(Directory.GetCurrentDirectory(), "ffmpeg"));
                 //依赖检查完毕，开始正式程序
+                
                 Console.ReadKey();
             }
         }
     }
 
     public static async Task TimeBasedTrigger()
-    {
+    { 
         int randomDelay = new Random().Next(0, 360);
         DateTime streamTime = DateTime.Today.AddHours(23).AddMinutes(55).AddSeconds(randomDelay);
         
-           //获取当日直播状态   
-           if (await BiliApi.NeedStream())
-           {
-               await BiliApi.BiliStreamEnabler();
-           } else
-           {
-               Console.WriteLine("今天已直播，无需再次直播");
-               Environment.Exit(0);
-           }
+        //获取当日直播状态   
+        if (await BiliApi.NeedStream())
+        {
+            await BiliApi.BiliStreamEnabler();
+        } else
+        {
+            Console.WriteLine("今天已直播，无需再次直播");
+            Environment.Exit(0);
+        }
         await StartLive();
 
         if (DateTime.Now >= DateTime.Today.AddHours(23).AddMinutes(55))
@@ -84,11 +93,16 @@ public static class Program
             }
         }
     }
-
     
 
     public static async Task StartLive()
     {
         Console.WriteLine("开始直播模块\n开发中...");
+        ProcessStartInfo ffmpegStartInfo = new ProcessStartInfo
+        {
+            FileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg.exe"),
+            CreateNoWindow = true,
+            UseShellExecute = false,
+        };
     }
 }
