@@ -3,7 +3,7 @@
 public class BiliApi
 {
     private static bool _needStream = false;
-    public static async Task<bool> NeedStream()
+    public static async Task<bool> NeedStreamAsync()
     {
         await CheckStatus();
         if (_needStream)

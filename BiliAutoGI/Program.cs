@@ -11,12 +11,14 @@ public static class Program
         Console.ReadKey();
         
         string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
-        string ffmpegFile = Path.Combine(currentDirectory, "ffmpeg.exe");
         
+        string ffmpegFile = Path.Combine(currentDirectory, "ffmpeg.exe");
+        string streamFile = Path.Combine(currentDirectory, "stream.mp4");
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             ffmpegFile = "ffmpeg";
         }
+        
         if (!File.Exists(Path.Combine(currentDirectory, "stream.mp4")))
         {
             Console.WriteLine("直播视频stream.mp4不存在，请放入同目录下");
@@ -39,70 +41,56 @@ public static class Program
                 //check
                 Console.WriteLine("ffmpeg存在");
                 //check
-                //依赖检查完毕，开始正式程序
                 
+                //依赖检查完毕，开始正式程序
+                if (await NeedStreamNowAsync())
+                {
+                    await StartLiveAsync(ffmpegFile,streamFile);
+                }
+                else
+                {
+                    int randomDelay = new Random().Next(-70, 70);
+                    Console.WriteLine("将等待到23:55开始直播任务");
+                    await Task.Delay(DateTime.Now - DateTime.Today.AddHours(23).AddMinutes(55).AddSeconds(randomDelay));
+                    await StartLiveAsync(ffmpegFile,streamFile);
+                    //等待到23:55附近开始直播
+                }
                 Console.ReadKey();
             }
         }
     }
 
-    public static async Task TimeBasedTrigger()
+    private static async Task<bool> NeedStreamNowAsync()
     { 
-        int randomDelay = new Random().Next(0, 360);
-        DateTime streamTime = DateTime.Today.AddHours(23).AddMinutes(55).AddSeconds(randomDelay);
-        
-        //获取当日直播状态   
-        if (await BiliApi.NeedStream())
-        {
-            await BiliApi.BiliStreamEnabler();
-        } else
-        {
-            Console.WriteLine("今天已直播，无需再次直播");
-            Environment.Exit(0);
-        }
-        await StartLive();
-
+        bool needStream = await BiliApi.NeedStreamAsync();
         if (DateTime.Now >= DateTime.Today.AddHours(23).AddMinutes(55))
         {
-            Console.WriteLine("立即直播 70 分钟");
-            await StartLive();
+            return true;
         }
-        else
+
+        if (!needStream)
         {
-            // 今天已直播：在23:55之前不再直播，等待至23:55
-            if (await BiliApi.NeedStream())
-            {
-                await Task.Delay(streamTime - DateTime.Now);
-                Console.WriteLine($"等待{streamTime}再开始直播");
-                await StartLive();
-            }
-            else
-            {
-                // 今天未直播：在22:58之前立即直播，否则等待至23:55
-                if (DateTime.Now < DateTime.Today.AddHours(22).AddMinutes(58))
-                {
-                    Console.WriteLine("立即直播 70 分钟");
-                    await StartLive();
-                }
-                else
-                {
-                    Console.WriteLine("今天直播任务已无法完成，等待 23:55 再开始直播");
-                    await Task.Delay(DateTime.Today.AddHours(23).AddMinutes(55) - DateTime.Now);
-                    await StartLive();
-                }
-            }
+            return false;
         }
+
+        if (DateTime.Now > DateTime.Today.AddHours(22).AddMinutes(58))
+        {
+            return false;
+        }
+
+        return true;
     }
     
 
-    public static async Task StartLive()
+    private static async Task StartLiveAsync(string ffmpegFile,string streamFile)
     {
         Console.WriteLine("开始直播模块\n开发中...");
         ProcessStartInfo ffmpegStartInfo = new ProcessStartInfo
         {
-            FileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg.exe"),
+            FileName = ffmpegFile,
             CreateNoWindow = true,
             UseShellExecute = false,
         };
+        Process ffmpegProcess = Process.Start(ffmpegStartInfo);
     }
 }
