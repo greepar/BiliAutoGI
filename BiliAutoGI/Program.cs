@@ -9,16 +9,17 @@ public static class Program
     {
         Console.WriteLine("使用说明:1.放入直播播放的视频stream.mp4在同目录下(确保视频大于70min，否则直播不能够完成)\n2.确保ffmpeg在同目录下或者在系统环境里\n3.如已明白按任意键继续");
         Console.ReadKey();
-        
+        //程序同目录
         string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
-        
+        //ffmpeg目录
         string ffmpegFile = Path.Combine(currentDirectory, "ffmpeg.exe");
         string streamFile = Path.Combine(currentDirectory, "stream.mp4");
+        //非Linux平台情况下的ffmpeg文件目录
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             ffmpegFile = "ffmpeg";
         }
-        
+        //检查文件是否存在
         if (!File.Exists(Path.Combine(currentDirectory, "stream.mp4")))
         {
             Console.WriteLine("直播视频stream.mp4不存在，请放入同目录下");
@@ -41,7 +42,7 @@ public static class Program
                 //check
                 Console.WriteLine("ffmpeg存在");
                 //check
-                
+
                 //依赖检查完毕，开始正式程序
                 if (await NeedStreamNowAsync())
                 {
