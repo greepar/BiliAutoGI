@@ -3,9 +3,9 @@ using System.Runtime.InteropServices;
 
 namespace BiliAutoGI;
 
-public static class Program
+public class Program
 {
-    public static async Task Main()
+    public async Task Main()
     {
         Console.WriteLine("使用说明:1.放入直播播放的视频stream.mp4在同目录下(确保视频大于70min，否则直播不能够完成)\n2.确保ffmpeg在同目录下或者在系统环境里\n3.如已明白按任意键继续");
         Console.ReadKey();
@@ -61,8 +61,8 @@ public static class Program
         }
     }
 
-    private static async Task<bool> NeedStreamNowAsync()
-    { 
+    private async Task<bool> NeedStreamNowAsync()
+    {
         bool needStream = await BiliApi.NeedStreamAsync();
         if (DateTime.Now >= DateTime.Today.AddHours(23).AddMinutes(55))
         {
@@ -83,7 +83,7 @@ public static class Program
     }
     
 
-    private static async Task StartLiveAsync(string ffmpegFile,string streamFile)
+    private async Task StartLiveAsync(string ffmpegFile,string streamFile)
     {
         Console.WriteLine("开始直播模块\n开发中...");
         ProcessStartInfo ffmpegStartInfo = new ProcessStartInfo
