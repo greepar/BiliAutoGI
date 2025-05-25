@@ -5,7 +5,7 @@ namespace BiliAutoGI;
 
 public class Program
 {
-    public async Task Main()
+    public static async Task Main()
     {
         Console.WriteLine("使用说明:1.放入直播播放的视频stream.mp4在同目录下(确保视频大于70min，否则直播不能够完成)\n2.确保ffmpeg在同目录下或者在系统环境里\n3.如已明白按任意键继续");
         Console.ReadKey();
@@ -61,9 +61,10 @@ public class Program
         }
     }
 
-    private async Task<bool> NeedStreamNowAsync()
+    private static async Task<bool> NeedStreamNowAsync()
     {
-        bool needStream = await BiliApi.NeedStreamAsync();
+        BiliApi api = new BiliApi();
+        bool needStream = await api.NeedStreamAsync();
         if (DateTime.Now >= DateTime.Today.AddHours(23).AddMinutes(55))
         {
             return true;
