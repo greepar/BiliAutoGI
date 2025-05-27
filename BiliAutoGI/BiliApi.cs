@@ -3,21 +3,27 @@ using System.Text.Json.Serialization;
 
 namespace BiliAutoGI;
 
+// 使用 源生成 以支持 NativeAot
+[JsonSerializable(typeof(BiliApi.MinimalApiResponse))]
+[JsonSerializable(typeof(BiliApi.MinimalTaskData))]
+public partial class SourceGenerationContext : JsonSerializerContext
+{
+}
+
 public class BiliApi
 {
     // 对应 "data" 对象，我们只关心 "message" (可能还有 "status" 或 "task_finished" 来辅助判断)
-    private class MinimalTaskData
+    public class MinimalTaskData
     {
         // 你最关心的字段
-        public string Message { get; set; }
-
+        public required string Message { get; set; }
         // 如果需要根据状态或完成情况来决定 Message 的含义，也可以包含它们
         // public int Status { get; set; }
         // [JsonPropertyName("task_finished")] // JSON 中是 task_finished
         // public bool TaskFinished { get; set; }
     }
 
-    private class MinimalApiResponse
+    public class MinimalApiResponse
     {
         // Code 通常是必须的，用来判断请求是否成功
         public int Code { get; set; }
@@ -36,74 +42,117 @@ public class BiliApi
         _httpClient = new HttpClient();
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
     }
-    public static async Task BiliLoginAsync()
+    public async Task BiliLoginAsync()
     {
         //检查登录
         //已登录，直接载入Cookie
+        await File.WriteAllTextAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "bili_cookie.txt"), _biliCookie);
+        Console.WriteLine("文件bili_cookie.txt已生成，请检查");
+        string csrf = GetCsrfFromCookie(_biliCookie);
+        Console.WriteLine("csrf字段: " + csrf);
+        var apiUrl = "https://api.live.bilibili.com/room/v1/Room/startLive";
+        var formData = new Dictionary<string, string>
+        {
+            { "platform", "web_link" },
+            { "room_id", "10431980" }, // 这里需要替换为实际的 room_id
+            { "area_v2", "321" }, // 这里需要替换为实际的 area_id
+            { "backup_stream", "0" },
+            { "csrf", csrf },
+            { "csrf_token", csrf }
+        };
+        var request = new HttpRequestMessage(HttpMethod.Post, apiUrl)
+        {
+            Content = new FormUrlEncodedContent(formData)
+        };
+        request.Headers.Add("Cookie", _biliCookie);
+        try
+        {
+            var response = await _httpClient.SendAsync(request);
+            if (response.IsSuccessStatusCode)
+            {
+                string jsonResponse = await response.Content.ReadAsStringAsync();
+                Console.WriteLine("登录成功，API响应: " + jsonResponse);
+                _isLogin = true;
+            }
+            else
+            {
+                Console.WriteLine($"登录失败，状态码: {response.StatusCode}");
+                _isLogin = false;
+            }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
         //未登录，开始登入程序
     }
-    private async Task CheckStatusAsync()
+    private async Task Check60MinStatusAsync()
     {
         //检查是否登录
         Console.WriteLine("检查今日是否完成直播60min任务，开发中...");
         _needStream = false;
         //B站检查今日直播状态API
-        string task60MinAPI = "https://api.bilibili.com/x/activity_components/mission/info?task_id=6ERA4wloghvk5600&web_location=888.81821&w_rid=da939b1fbbfb9bff264b61baaec618c9&wts=1748099371";
+        string task60MinApi = "https://api.bilibili.com/x/activity_components/mission/info?task_id=6ERA4wloghvk5600&web_location=888.81821&w_rid=da939b1fbbfb9bff264b61baaec618c9&wts=1748099371";
         try
         {
-            Console.WriteLine($"正在检查今日是否已经完成60min直播任务 {task60MinAPI}");
-            HttpResponseMessage response = await _httpClient.GetAsync(task60MinAPI);
+            Console.WriteLine($"正在检查今日是否已经完成60min直播任务 {task60MinApi}");
+            HttpResponseMessage response = await _httpClient.GetAsync(task60MinApi);
             if (response.IsSuccessStatusCode)
             {
                 string jsonResponse = await response.Content.ReadAsStringAsync();
+                
                 Console.WriteLine($"API Response JSON: {jsonResponse}");
 
                 var options = new JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true // 推荐加上，方便匹配
                 };
-                // 使用最小化的类来反序列化
-                MinimalApiResponse apiResult = JsonSerializer.Deserialize<MinimalApiResponse>(jsonResponse, options);
-
-                if (apiResult != null && apiResult.Code == 0 && apiResult.Data != null)
-                {
-                    string dataMessageText = apiResult.Data.Message;
-                    Console.WriteLine(
-                        $"API returned data.message: '{dataMessageText}')");
-
-                    bool isClaimable = (dataMessageText == "获取奖励");
-                    // return (isClaimable, dataMessageText);
+                
+                try
+                { 
+                    // 使用最小化的类来反序列化
+                    MinimalApiResponse apiResult = JsonSerializer.Deserialize(jsonResponse, SourceGenerationContext.Default.MinimalApiResponse)!;
+                    if (apiResult.Code == 0)
+                    {
+                        string dataMessageText = apiResult.Data.Message;
+                        Console.WriteLine("从 API 获取的消息: " + dataMessageText);
+                        if (dataMessageText == "获取奖励")
+                        {
+                            _needStream = false;
+                        }
+                        else
+                        {
+                            Console.WriteLine("今天似乎还未完成直播任务，或任务状态不符合预期。");
+                            _needStream = true;
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine(
+                            $"API call successful but data indicates an issue or unexpected structure: Code={apiResult?.Code}");
+                        // return (false, $"Error: API Code {apiResult?.Code}");
+                    }
                 }
-                else
+                catch (JsonException e)
                 {
-                    Console.WriteLine(
-                        $"API call successful but data indicates an issue or unexpected structure: Code={apiResult?.Code}");
-                    // return (false, $"Error: API Code {apiResult?.Code}");
+                    Console.WriteLine("JSON 转换出错: " + e.Message);
+                    throw;
                 }
             }
-            // ... (其他 catch 和错误处理) ...
-            // catch (JsonException jsonEx)
-            // {
-            //     Console.WriteLine(
-            //         $"JSON Deserialization error: {jsonEx.Message}. JSON: {await response.Content.ReadAsStringAsync()}");
-            //     return (false, "Error: JSON parsing failed.");
-            // }
-            // catch (Exception ex)
-            // {
-            //     Console.WriteLine($"An error occurred: {ex.Message}");
-            //     return (false, $"Error: {ex.Message}");
-            // }
-            // return (false, "Unknown error or request failed before parsing."); // 确保所有路径都有返回值
         }
-        catch(Exception)
+        catch(Exception e)
         {
-            Console.WriteLine("test");
+            //虽然我不知道这能出什么异常xD
+            Console.WriteLine("CheckStatusAsync 外部出现异常: " + e.Message);
+            throw;
         }
     }
+    
     public async Task<bool> NeedStreamAsync()
     {
         await BiliLoginAsync();
-        await CheckStatusAsync();
+        await Check60MinStatusAsync();
         return _needStream;
     }
     private string GetCsrfFromCookie(string cookieString)

@@ -5,6 +5,7 @@ namespace BiliAutoGI;
 
 public class Program
 {
+    private static BiliApi _api = new BiliApi();
     public static async Task Main()
     {
         Console.WriteLine("使用说明:1.放入直播播放的视频stream.mp4在同目录下(确保视频大于70min，否则直播不能够完成)\n2.确保ffmpeg在同目录下或者在系统环境里\n3.如已明白按任意键继续");
@@ -43,28 +44,29 @@ public class Program
                 Console.WriteLine("ffmpeg存在");
                 //check
 
+                await _api.BiliLoginAsync();
+                
                 //依赖检查完毕，开始正式程序
-                if (await NeedStreamNowAsync())
-                {
-                    await StartLiveAsync(ffmpegFile,streamFile);
-                }
-                else
-                {
-                    int randomDelay = new Random().Next(-70, 70);
-                    Console.WriteLine("将等待到23:55开始直播任务");
-                    await Task.Delay(DateTime.Now - DateTime.Today.AddHours(23).AddMinutes(55).AddSeconds(randomDelay));
-                    await StartLiveAsync(ffmpegFile,streamFile);
-                    //等待到23:55附近开始直播
-                }
+                // if (await IfNeedStreamNowAsync())
+                // {
+                //     await StartLiveAsync(ffmpegFile,streamFile);
+                // }
+                // else
+                // {
+                //     int randomDelay = new Random().Next(-70, 70);
+                //     Console.WriteLine("将等待到23:55开始直播任务");
+                //     await Task.Delay(DateTime.Now - DateTime.Today.AddHours(23).AddMinutes(55).AddSeconds(randomDelay));
+                //     await StartLiveAsync(ffmpegFile,streamFile);
+                //     //等待到23:55附近开始直播
+                // }
                 Console.ReadKey();
             }
         }
     }
 
-    private static async Task<bool> NeedStreamNowAsync()
-    {
-        BiliApi api = new BiliApi();
-        bool needStream = await api.NeedStreamAsync();
+    private static async Task<bool> IfNeedStreamNowAsync()
+    { 
+        bool needStream = await _api.NeedStreamAsync();
         if (DateTime.Now >= DateTime.Today.AddHours(23).AddMinutes(55))
         {
             return true;
@@ -84,7 +86,7 @@ public class Program
     }
     
 
-    private async Task StartLiveAsync(string ffmpegFile,string streamFile)
+    private static async Task StartLiveAsync(string ffmpegFile,string streamFile)
     {
         Console.WriteLine("开始直播模块\n开发中...");
         ProcessStartInfo ffmpegStartInfo = new ProcessStartInfo
