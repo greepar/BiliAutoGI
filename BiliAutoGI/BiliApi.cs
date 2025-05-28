@@ -1,5 +1,4 @@
 ﻿using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace BiliAutoGI;
 
@@ -7,11 +6,15 @@ namespace BiliAutoGI;
 public class BiliApi
 {
     private static bool _needStream = false;
-    private static bool _isLogin = false;
     private static string _biliCookie =null!;
     
     private readonly HttpClient _httpClient;
     private const string UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:138.0) Gecko/20100101 Firefox/138.0";
+    public class LiveInfo
+    {
+        public required string RtmpAddr { get; set; }
+        public required string RtmpKey { get; set; }
+    }
     public BiliApi()
     {
         _httpClient = new HttpClient();
@@ -25,10 +28,11 @@ public class BiliApi
         var checkLoginApi = "https://api.bilibili.com/x/web-interface/nav";
         
         //已登录，直接载入Cookie
+        Console.WriteLine("BiliLoginAsync开发中，直接return true了");
         return true; 
         //未登录，开始登入程序
     }
-    private async Task Check60MinStatusAsync()
+    public async Task<bool?> Check60MinStatusAsync()
     {
         _needStream = false;
         //B站检查今日直播状态API
@@ -54,12 +58,12 @@ public class BiliApi
                     Console.WriteLine("从 API 获取的消息: " + rewardMessageFromJsonData);
                     if (rewardMessageFromJsonData == "获取奖励")
                     {
-                        _needStream = false;
+                        return false;
                     }
                     else
                     {
                         Console.WriteLine("今天似乎还未完成直播任务，或任务状态不符合预期,将会开始今日直播。");
-                        _needStream = true;
+                        return true;
                     }
                 }
                 catch (JsonException e)
@@ -70,6 +74,7 @@ public class BiliApi
             }
             else
             {
+                return null;
                 Console.WriteLine("API 请求失败，状态码: " + response.StatusCode);
             }
         }
@@ -79,12 +84,6 @@ public class BiliApi
             Console.WriteLine("CheckStatusAsync 外部出现异常: " + e.Message);
             throw;
         }
-    }
-    public async Task<bool> NeedStreamAsync()
-    {
-        await Check60MinStatusAsync();
-        Console.WriteLine(_needStream ? "今天直播任务还未完成" : "今日直播任务已完成");
-        return _needStream;
     }
     private string GetCsrfFromCookie(string cookieString)
     {
@@ -111,7 +110,7 @@ public class BiliApi
             Console.WriteLine("Cookie string is null or empty.");
             return null;
         }
-
+        //通过API获取房间ID
         var request = new HttpRequestMessage(HttpMethod.Get, "https://api.live.bilibili.com/xlive/app-blink/v1/highlight/getRoomHighlightState");
         request.Headers.Add("Cookie", _biliCookie);
         try
@@ -119,15 +118,15 @@ public class BiliApi
             HttpResponseMessage response = await _httpClient.SendAsync(request);
             string stringResponse = await response.Content.ReadAsStringAsync();
             var jsonDoc = JsonDocument.Parse(stringResponse);
-            var jsonRoot = jsonDoc.RootElement;
+            var jsonElement = jsonDoc.RootElement;
             if (response.IsSuccessStatusCode)
             {
-                var roomId = jsonRoot.GetProperty("data").GetProperty("room_id").GetInt64();
+                var roomId = jsonElement.GetProperty("data").GetProperty("room_id").GetInt64();
                 return roomId;
             }
             else
             {
-                Console.WriteLine($"请求失败，状态码: {jsonRoot.GetProperty("data").GetProperty("code").GetInt32()}, 错误信息: {jsonRoot.GetProperty("data").GetProperty("message").GetString()}");
+                Console.WriteLine($"请求失败，状态码: {jsonElement.GetProperty("data").GetProperty("code").GetInt32()}, 错误信息: {jsonElement.GetProperty("data").GetProperty("message").GetString()}");
                 return null;
             }
         }
@@ -147,22 +146,22 @@ public class BiliApi
             return null;
         }
     }
-     public async Task<string> StartLiveAsync()
+     public async Task<LiveInfo?> StartLiveAsync()
     {
         string csrf = GetCsrfFromCookie(_biliCookie);
         if (string.IsNullOrEmpty(csrf))
         {
-            return "{\"error\":\"Failed to get CSRF token from cookie.\"}";
+            Console.WriteLine("csrf获取失败");
+            return null;
         }
-        //get csrf
-        Console.WriteLine("csrf字段: " + csrf);
         var apiUrl = "https://api.live.bilibili.com/room/v1/Room/startLive";
         //get room_id
         long? roomId = await GetRoomIdAsync();
         Console.WriteLine($"room_id: {roomId}");
         if (!roomId.HasValue)
         {
-            return "{\"error\":\"Failed to get room_id.\"}";
+            Console.WriteLine("获取房间ID失败，无法开始直播。");
+            return null;
         }
         var formData = new Dictionary<string, string>
         {
@@ -184,13 +183,21 @@ public class BiliApi
             if (response.IsSuccessStatusCode)
             {
                 string jsonResponse = await response.Content.ReadAsStringAsync();
-                Console.WriteLine("请求已发送，API响应: " + jsonResponse);
-                _isLogin = true;
-                return "success";
+                Console.WriteLine("输出JSON"+jsonResponse);
+                var jsonDoc = JsonDocument.Parse(jsonResponse);
+                var jsonElement = jsonDoc.RootElement;
+                string rtmpAddr = jsonElement.GetProperty("data").GetProperty("rtmp").GetProperty("addr").GetString()!;
+                string rtmpKey = jsonElement.GetProperty("data").GetProperty("rtmp").GetProperty("code").GetString()!;
+                Console.WriteLine($"biliapi:测试获取直播信息，RTMP地址: {rtmpAddr}, RTMP密钥: {rtmpKey}");
+                var liveInfo = new LiveInfo()
+                {
+                    RtmpAddr = rtmpAddr,
+                    RtmpKey = rtmpKey
+                };
+                return liveInfo;
             }
             Console.WriteLine($"登录失败，状态码: {response.StatusCode}");
-            _isLogin = false;
-                return "error";
+            return null;
         }
         catch (JsonException e)
         {
@@ -208,6 +215,7 @@ public class BiliApi
             throw;
         }
     }
+    
 
     public static async Task GetStreamKeyAsync()
     {
