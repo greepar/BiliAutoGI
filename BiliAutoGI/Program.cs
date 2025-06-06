@@ -1,16 +1,55 @@
 ﻿using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace BiliAutoGI;
 
+//源生成以支持序列化
+[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSerializable(typeof(Program.ConfigInfo))]
+public partial class SourceGenerateContext : JsonSerializerContext
+{
+}
+
 public static class Program
 {
-    private static readonly BiliApi Api = new BiliApi();
-    public static async Task Main()
+    private static readonly BiliApi Api = new ();
+    public class ConfigInfo
     {
+        public required string BiliCookie { get; set; }
+    }
+    public static async Task Main()
+    { 
         Console.WriteLine("使用说明:1.放入直播播放的视频stream.mp4在同目录下(确保视频大于70min，否则直播不能够完成)\n2.确保ffmpeg在同目录下或者在系统环境里\n3.如已明白按任意键继续");
         Console.ReadKey();
         //程序同目录
         string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
+        //读取json
+        var jsonFile = Path.Combine(currentDirectory, "config.json");
+        if (File.Exists(jsonFile))
+        {
+            try
+            { 
+                using var jsonDoc = JsonDocument.Parse(await File.ReadAllTextAsync(jsonFile));
+                string biliCookie = jsonDoc.RootElement.GetProperty("BiliCookie").GetString() ?? "null";
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"读取配置文件失败: {e.Message}");
+                await SaveConfig();
+            }
+        }
+        else
+        {
+            await SaveConfig();
+        }
+        var config = new ConfigInfo()
+        {
+            BiliCookie = "null"
+        };
+        var configJson = JsonSerializer.Serialize(config, SourceGenerateContext.Default.ConfigInfo);
+        await File.WriteAllTextAsync("config.json", configJson);
+        Console.ReadKey();
         //ffmpeg目录
         string ffmpegFile = Path.Combine(currentDirectory, "ffmpeg.exe");
         string streamFile = Path.Combine(currentDirectory, "stream.mp4");
@@ -108,5 +147,10 @@ public static class Program
             //return false;
         }
         return true;
+    }
+
+    public static async Task SaveConfig()
+    {
+        await File.WriteAllTextAsync("config.json", "a");
     }
 }

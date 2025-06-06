@@ -6,8 +6,8 @@ namespace BiliAutoGI;
 
 public class BiliApi
 {
-    private static bool _needStream = false;
     private static string _biliCookie =null!;
+    private static bool _needStream = false;
     private readonly HttpClient _httpClient;
     private readonly CookieContainer _cookieContainer;
     private const string UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:138.0) Gecko/20100101 Firefox/138.0";
@@ -84,39 +84,60 @@ public class BiliApi
             var loginUrl = loginInfo.LoginUrl;
             await GenerateQrCodeAsync(loginUrl);
             Console.WriteLine($"请扫描二维码登录，登录后请按任意键继续...");
-            Console.ReadKey();
             var loginCheckApi = $"https://passport.bilibili.com/x/passport-login/web/qrcode/poll?qrcode_key={qrcodeKey}";
-            var response = await _httpClient.GetAsync(loginCheckApi);
-            if (response.IsSuccessStatusCode)
+            for (int i = 0,apiResultCode = 123; i < 30 || apiResultCode == 0 ; i++)
             {
+                using var response = await _httpClient.GetAsync(loginCheckApi);
                 var stringResponse = await response.Content.ReadAsStringAsync();
-                try
+                using var jsonDoc = JsonDocument.Parse(stringResponse);
+                if (response.IsSuccessStatusCode)
                 {
-                    using var jsonDoc = JsonDocument.Parse(stringResponse);
-                    var apiResultCode = jsonDoc.RootElement.GetProperty("code").GetInt32();
-                    if (apiResultCode == 0)
+                    try
                     {
-                        Console.WriteLine("登录成功，正在载入Cookie..."); 
-                        var uri = new Uri("https://space.bilibili.com");
-                        var cookie = _cookieContainer.GetCookies(uri);
-                        _biliCookie = string.Join(";", cookie.Select(c => $"{c.Name}={c.Value}"));
-                        Console.WriteLine("Cookie载入成功: " + _biliCookie);
-                        //登录成功，载入Cookie
-                        return true;
+                        apiResultCode = jsonDoc.RootElement.GetProperty("data").GetProperty("code").GetInt32();
+                        Console.WriteLine("登录api返回code: " + apiResultCode + "api返回信息: " + jsonDoc.RootElement.GetProperty("data").GetProperty("message").GetString());
+                        if (apiResultCode == 0)
+                        {
+                            Console.WriteLine("登录成功，正在载入Cookie..."); 
+                            var uri = new Uri("https://space.bilibili.com");
+                            var cookie = _cookieContainer.GetCookies(uri);
+                            _biliCookie = string.Join(";", cookie.Select(c => $"{c.Name}={c.Value}"));
+                            Console.WriteLine("Cookie载入成功: " + _biliCookie);
+                            //登录成功，载入Cookie
+                            return true;
+                        }
+                        if (apiResultCode == 86101)
+                        {
+                            //未扫码，继续等待
+                        }
+                        else if (apiResultCode == 86090)
+                        {
+                            //已扫码，等待手机确认登录
+                        }
+                        else if (apiResultCode == 86038) 
+                        {
+                            Console.WriteLine("登录二维码已失效，请重新获取二维码。");
+                            return false;
+                        }
+                        else
+                        {
+                            Console.WriteLine($"未知返回代码: {apiResultCode}");
+                            return false;
+                        }
                     }
-                    Console.WriteLine("登录失败，可能是二维码已过期。请重试。");
+                    catch (JsonException e)
+                    {
+                        Console.WriteLine("JSON 转换出错: " + e.Message);
+                        throw;
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("登录检查API请求失败，状态码: " + response.StatusCode);
                     return false;
                 }
-                catch (JsonException e)
-                {
-                    Console.WriteLine("JSON 转换出错: " + e.Message);
-                    throw;
-                }
-            }
-            else
-            {
-                Console.WriteLine("登录检查API请求失败，状态码: " + response.StatusCode);
-                return false;
+                Console.WriteLine($"正在检查登录状态... {i + 1}/30");
+                await Task.Delay(1000); // 每秒检查一次
             }
         }
 
@@ -271,12 +292,11 @@ public class BiliApi
             var response = await _httpClient.SendAsync(request);
             if (response.IsSuccessStatusCode)
             {
-                string jsonResponse = await response.Content.ReadAsStringAsync();
+                var jsonResponse = await response.Content.ReadAsStringAsync();
                 Console.WriteLine("输出JSON"+jsonResponse);
-                var jsonDoc = JsonDocument.Parse(jsonResponse);
-                var jsonElement = jsonDoc.RootElement;
-                string rtmpAddr = jsonElement.GetProperty("data").GetProperty("rtmp").GetProperty("addr").GetString()!;
-                string rtmpKey = jsonElement.GetProperty("data").GetProperty("rtmp").GetProperty("code").GetString()!;
+                using var jsonDoc = JsonDocument.Parse(jsonResponse);
+                var rtmpAddr = jsonDoc.RootElement.GetProperty("data").GetProperty("rtmp").GetProperty("addr").GetString()!;
+                var rtmpKey = jsonDoc.RootElement.GetProperty("data").GetProperty("rtmp").GetProperty("code").GetString()!;
                 Console.WriteLine($"biliapi:测试获取直播信息，RTMP地址: {rtmpAddr}, RTMP密钥: {rtmpKey}");
                 var liveInfo = new LiveInfo()
                 {
@@ -304,18 +324,7 @@ public class BiliApi
             throw;
         }
     }
-    
-
-    public static async Task GetStreamKeyAsync()
-    {
-        
-    }
-    public static async Task BiliStreamEnabler()
-    {
-        Console.WriteLine("开始直播，开发中...");
-    }
-
-    public async Task GenerateQrCodeAsync(string url)
+    private async Task GenerateQrCodeAsync(string url)
     {
         Console.WriteLine($"生成登录二维码: {url}");
         using QRCodeGenerator qrGenerator = new QRCodeGenerator();
