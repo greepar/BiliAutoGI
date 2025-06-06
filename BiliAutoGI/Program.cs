@@ -44,8 +44,7 @@ public static class Program
                 //check
                 
                 //临时赋值Cookie
-                string biliCookie = "";
-                var loginSuccess = await Api.BiliLoginAsync(biliCookie);
+                var loginSuccess = await Api.BiliLoginAsync();
                 if(loginSuccess)
                 {
                     Console.WriteLine("B站登录成功");
@@ -103,7 +102,10 @@ public static class Program
         
         if (DateTime.Now > DateTime.Today.AddHours(22).AddMinutes(58))
         {
-            return false;
+            //temp
+            return true;
+            
+            //return false;
         }
         return true;
     }

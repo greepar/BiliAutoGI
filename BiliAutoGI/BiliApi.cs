@@ -1,5 +1,6 @@
-﻿using System.Text.Json;
-
+﻿using System.Net;
+using System.Text.Json;
+using QRCoder;
 namespace BiliAutoGI;
 
 
@@ -7,30 +8,126 @@ public class BiliApi
 {
     private static bool _needStream = false;
     private static string _biliCookie =null!;
-    
     private readonly HttpClient _httpClient;
+    private readonly CookieContainer _cookieContainer;
     private const string UserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:138.0) Gecko/20100101 Firefox/138.0";
     public class LiveInfo
     {
-        public required string RtmpAddr { get; set; }
-        public required string RtmpKey { get; set; }
+        public required string RtmpAddr { get; init; }
+        public required string RtmpKey { get; init; }
+    }
+    public class LoginInfo
+    {
+        public required string QrCodeKey { get; init; }
+        public required string LoginUrl { get; init; }
     }
     public BiliApi()
     {
-        _httpClient = new HttpClient();
+        _cookieContainer = new CookieContainer();
+        var handler = new HttpClientHandler
+        {
+            UseCookies = true,
+            CookieContainer = _cookieContainer,
+        };
+        _httpClient = new HttpClient(handler);
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
     }
-    public async Task<bool> BiliLoginAsync(string inputCookie)
+
+    private async Task<LoginInfo?> GetLoginQrCode()
+    {
+        var loginApi = "https://passport.bilibili.com/x/passport-login/web/qrcode/generate";
+        var response = await _httpClient.GetAsync(loginApi);
+        if (response.IsSuccessStatusCode)
+        {
+            var stringResponse = await response.Content.ReadAsStringAsync(); 
+            try
+            {
+                var jsonDoc = JsonDocument.Parse(stringResponse);
+                var jsonRoot = jsonDoc.RootElement;
+                var apiResultCode = jsonRoot.GetProperty("code").GetInt32();
+                if (apiResultCode == 0)
+                {
+                    var loginInfo = new LoginInfo
+                    {
+                        QrCodeKey = jsonRoot.GetProperty("data").GetProperty("qrcode_key").GetString()!,
+                        LoginUrl = jsonRoot.GetProperty("data").GetProperty("url").GetString()!
+                    };
+                    return loginInfo;
+                }
+                else
+                {
+                    Console.WriteLine($"API Error: {jsonRoot.GetProperty("message").GetString()}");
+                    return null;
+                }
+            }
+            catch (JsonException e)
+            {
+                Console.WriteLine("JSON 转换出错: " + e.Message);
+                throw;
+            }
+        }
+        else
+        {
+            Console.WriteLine("API 请求失败，状态码: " + response.StatusCode);
+            return null;
+        }
+    }
+    public async Task<bool> BiliLoginAsync()
     {
         await Task.Delay(1);
-        _biliCookie = inputCookie;
+        //未登录，开始登入程序
+        var loginInfo = await GetLoginQrCode();
+        if (loginInfo != null)
+        {
+            //获取到登录二维码后，开始轮询获取是否登录成功
+            var qrcodeKey = loginInfo.QrCodeKey;
+            var loginUrl = loginInfo.LoginUrl;
+            await GenerateQrCodeAsync(loginUrl);
+            Console.WriteLine($"请扫描二维码登录，登录后请按任意键继续...");
+            Console.ReadKey();
+            var loginCheckApi = $"https://passport.bilibili.com/x/passport-login/web/qrcode/poll?qrcode_key={qrcodeKey}";
+            var response = await _httpClient.GetAsync(loginCheckApi);
+            if (response.IsSuccessStatusCode)
+            {
+                var stringResponse = await response.Content.ReadAsStringAsync();
+                try
+                {
+                    using var jsonDoc = JsonDocument.Parse(stringResponse);
+                    var apiResultCode = jsonDoc.RootElement.GetProperty("code").GetInt32();
+                    if (apiResultCode == 0)
+                    {
+                        Console.WriteLine("登录成功，正在载入Cookie..."); 
+                        var uri = new Uri("https://space.bilibili.com");
+                        var cookie = _cookieContainer.GetCookies(uri);
+                        _biliCookie = string.Join(";", cookie.Select(c => $"{c.Name}={c.Value}"));
+                        Console.WriteLine("Cookie载入成功: " + _biliCookie);
+                        //登录成功，载入Cookie
+                        return true;
+                    }
+                    Console.WriteLine("登录失败，可能是二维码已过期。请重试。");
+                    return false;
+                }
+                catch (JsonException e)
+                {
+                    Console.WriteLine("JSON 转换出错: " + e.Message);
+                    throw;
+                }
+            }
+            else
+            {
+                Console.WriteLine("登录检查API请求失败，状态码: " + response.StatusCode);
+                return false;
+            }
+        }
+
+        Console.WriteLine("获取登录二维码失败，可能是Cookie无效或网络问题。");
+        return false;
         //已存在Cookie，直接检查Cookie是否有效
         var checkLoginApi = "https://api.bilibili.com/x/web-interface/nav";
         
         //已登录，直接载入Cookie
         Console.WriteLine("BiliLoginAsync开发中，直接return true了");
         return true; 
-        //未登录，开始登入程序
     }
     public async Task<bool?> Check60MinStatusAsync()
     {
@@ -40,9 +137,7 @@ public class BiliApi
         try
         {
             Console.WriteLine($"正在检查今日是否已经完成60min直播任务 {task60MinApi}");
-            var request = new HttpRequestMessage(HttpMethod.Get, task60MinApi);
-            request.Headers.Add("Cookie", _biliCookie);
-            HttpResponseMessage response = await _httpClient.SendAsync(request);
+            var response = await _httpClient.GetAsync(task60MinApi);
             if (response.IsSuccessStatusCode)
             {
                 string stringResponse = await response.Content.ReadAsStringAsync();
@@ -103,7 +198,7 @@ public class BiliApi
         }
         return null;
     }
-    public async Task<long?> GetRoomIdAsync()
+    private async Task<long?> GetRoomIdAsync()
     {
         if (string.IsNullOrEmpty(_biliCookie))
         {
@@ -111,22 +206,19 @@ public class BiliApi
             return null;
         }
         //通过API获取房间ID
-        var request = new HttpRequestMessage(HttpMethod.Get, "https://api.live.bilibili.com/xlive/app-blink/v1/highlight/getRoomHighlightState");
-        request.Headers.Add("Cookie", _biliCookie);
         try
         {
-            HttpResponseMessage response = await _httpClient.SendAsync(request);
+            var response = await _httpClient.GetAsync("https://api.live.bilibili.com/xlive/app-blink/v1/highlight/getRoomHighlightState");
             string stringResponse = await response.Content.ReadAsStringAsync();
-            var jsonDoc = JsonDocument.Parse(stringResponse);
-            var jsonElement = jsonDoc.RootElement;
+            using var jsonDoc = JsonDocument.Parse(stringResponse);
             if (response.IsSuccessStatusCode)
             {
-                var roomId = jsonElement.GetProperty("data").GetProperty("room_id").GetInt64();
+                var roomId = jsonDoc.RootElement.GetProperty("data").GetProperty("room_id").GetInt64();
                 return roomId;
             }
             else
             {
-                Console.WriteLine($"请求失败，状态码: {jsonElement.GetProperty("data").GetProperty("code").GetInt32()}, 错误信息: {jsonElement.GetProperty("data").GetProperty("message").GetString()}");
+                Console.WriteLine($"请求失败，状态码: {jsonDoc.RootElement.GetProperty("data").GetProperty("code").GetInt32()}, 错误信息: {jsonDoc.RootElement.GetProperty("data").GetProperty("message").GetString()}");
                 return null;
             }
         }
@@ -156,27 +248,24 @@ public class BiliApi
         }
         var apiUrl = "https://api.live.bilibili.com/room/v1/Room/startLive";
         //get room_id
-        long? roomId = await GetRoomIdAsync();
-        Console.WriteLine($"room_id: {roomId}");
-        if (!roomId.HasValue)
+        var roomId = (await GetRoomIdAsync()).ToString();
+        if (string.IsNullOrEmpty(roomId))
         {
-            Console.WriteLine("获取房间ID失败，无法开始直播。");
+            Console.WriteLine("获取房间ID失败，无法开始直播");
             return null;
         }
+        Console.WriteLine($"room_id: {roomId}");
         var formData = new Dictionary<string, string>
         {
-            { "platform", "web_link" },
-            { "room_id", "10431980" }, // 你的房间ID
+            { "platform", "ios_link" },
+            { "room_id" , roomId}, // 你的房间ID
             { "area_v2", "321" }, // 原神分区的area_id
-            { "backup_stream", "0" },
-            { "csrf", csrf },
-            { "csrf_token", csrf }
+            { "csrf", csrf }
         };
         var request = new HttpRequestMessage(HttpMethod.Post, apiUrl)
         {
             Content = new FormUrlEncodedContent(formData)
         };
-        request.Headers.Add("Cookie", _biliCookie);
         try
         {
             var response = await _httpClient.SendAsync(request);
@@ -224,5 +313,15 @@ public class BiliApi
     public static async Task BiliStreamEnabler()
     {
         Console.WriteLine("开始直播，开发中...");
+    }
+
+    public async Task GenerateQrCodeAsync(string url)
+    {
+        Console.WriteLine($"生成登录二维码: {url}");
+        using QRCodeGenerator qrGenerator = new QRCodeGenerator();
+        using QRCodeData qrCodeData = qrGenerator.CreateQrCode(url, QRCodeGenerator.ECCLevel.Q);
+        using PngByteQRCode qrCode = new PngByteQRCode(qrCodeData);
+        byte[] qrCodeImage = qrCode.GetGraphic(20);
+        await File.WriteAllBytesAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"qrcode.png"), qrCodeImage);
     }
 }
