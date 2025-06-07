@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 
 namespace BiliAutoGI;
 
-//源生成以支持序列化
+//源生成以支持nativeaot
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(Program.ConfigInfo))]
 public partial class SourceGenerateContext : JsonSerializerContext
@@ -20,7 +20,7 @@ public static class Program
     }
     public static async Task Main()
     { 
-        Console.WriteLine("使用说明:1.放入直播播放的视频stream.mp4在同目录下(确保视频大于70min，否则直播不能够完成)\n2.确保ffmpeg在同目录下或者在系统环境里\n3.如已明白按任意键继续");
+        Console.WriteLine("使用说明:1.放入直播播放的视频stream.mp4在同目录下(视频没有要求，低于60min将会自动循环播放，高于60min会自动停止)\n2.确保ffmpeg在同目录下\n3.如已明白按任意键继续");
         Console.ReadKey();
         //程序同目录
         string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
