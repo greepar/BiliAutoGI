@@ -185,7 +185,7 @@ public class BiliApi
         //B站检查今日直播状态API
         try
         {
-            var task60MinApiSource = "https://raw.githubusercontent.com/greepar/BiliAutoGI/refs/heads/master/api?token=GHSAT0AAAAAADEEWMYTZ5QDZVYN7P4LHXM62CERT7A";
+            var task60MinApiSource = "https://raw.githubusercontent.com/greepar/BiliAutoGI/refs/heads/master/api";
             using var ghResponse = await _httpClient.GetAsync(task60MinApiSource);
             if (!ghResponse.IsSuccessStatusCode)
             {
