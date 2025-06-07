@@ -74,8 +74,6 @@ public class BiliApi
     }
     public async Task<bool> BiliLoginAsync(string? inputCookie)
     {
-        await Task.Delay(1);
-        
         if (inputCookie != null)
         {
             //已存在Cookie，直接检查Cookie是否有效
@@ -85,15 +83,11 @@ public class BiliApi
             foreach (var pair in cookiePairs)
             {
                 var cookieParts = pair.Split('=', 2);
-                if (cookieParts.Length == 2)
-                {
-                    var name = cookieParts[0].Trim();
-                    var value = cookieParts[1].Trim();
-                
-                    // 2. 创建Cookie对象并设置Domain
-                    // 这是关键！将Domain设置为".bilibili.com"可以让Cookie对所有bilibili子域名生效
-                    _cookieContainer.Add(new Uri("https://www.bilibili.com"), new Cookie(name, value) { Domain = ".bilibili.com" });
-                }
+                if (cookieParts.Length != 2) continue;
+                var name = cookieParts[0].Trim();
+                var value = cookieParts[1].Trim();
+                // 添加Cookie到CookieContainer
+                _cookieContainer.Add(new Uri("https://www.bilibili.com"), new Cookie(name, value) { Domain = ".bilibili.com" });
             }
             var checkLoginApi = "https://api.bilibili.com/x/web-interface/nav";
             var response = await _httpClient.GetAsync(checkLoginApi);
@@ -109,9 +103,8 @@ public class BiliApi
                 }
                 //Cookie无效
                 Console.WriteLine("response.message: " + jsonDoc.RootElement.GetProperty("message").GetString());
-                var responseString = response.Content.ReadAsStringAsync();
-                Console.WriteLine("responseString" + responseString);
                 Console.WriteLine("Cookie无效，请重新登录");
+                await Program.SaveConfig(null);
                 return false;
             }
             //连接失败
@@ -137,7 +130,7 @@ public class BiliApi
                 {
                     try
                     {
-                        var apiResultCode = jsonDoc.RootElement.GetProperty("code").GetInt32();
+                        var apiResultCode = jsonDoc.RootElement.GetProperty("data").GetProperty("code").GetInt32();
                         if (apiResultCode == 0)
                         {
                             Console.WriteLine("登录成功，正在载入Cookie..."); 
@@ -357,13 +350,28 @@ public class BiliApi
     }
     private async Task GenerateQrCodeAsync(string url)
     {
-        Console.WriteLine($"生成登录二维码: {url}");
         using QRCodeGenerator qrGenerator = new QRCodeGenerator();
         using QRCodeData qrCodeData = qrGenerator.CreateQrCode(url, QRCodeGenerator.ECCLevel.Q);
         using PngByteQRCode qrCode = new PngByteQRCode(qrCodeData);
         byte[] qrCodeImage = qrCode.GetGraphic(20);
-        await File.WriteAllBytesAsync(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"qrcode.png"), qrCodeImage);
-        
-        Process.Start("open", Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"qrcode.png"));
+        var qrcodePng = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"qrcode.png");
+        await File.WriteAllBytesAsync(qrcodePng, qrCodeImage);
+        Console.WriteLine("二维码已生成在当前目录下: qrcode.png\n如未自动打开，请手动打开此文件。");
+        try
+        {
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo(qrcodePng)
+                {
+                    UseShellExecute = true 
+                }
+            };
+            process.Start();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"无法自动打开图片文件: {ex.Message}");
+            Console.WriteLine($"请手动打开文件: {qrcodePng}");
+        }
     }
 }
