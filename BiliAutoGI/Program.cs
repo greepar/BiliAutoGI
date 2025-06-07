@@ -53,8 +53,8 @@ public static class Program
         //非Linux平台情况下的ffmpeg文件目录
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            ffmpegFile = "ffmpeg";
-        }
+            ffmpegFile = Path.Combine(currentDirectory, "ffmpeg");
+        } 
         //检查文件是否存在
         if (!File.Exists(Path.Combine(currentDirectory, "stream.mp4")))
         {
@@ -65,7 +65,8 @@ public static class Program
         {
             if (!File.Exists(ffmpegFile))
             {
-                Console.WriteLine("ffmpeg.exe不存在，请检查");
+                Console.WriteLine($"ffmpeg文件{ffmpegFile}不存在，请放入同目录下");
+                Console.WriteLine("ffmpeg不存在，请检查");
                 Console.ReadKey();
                 Environment.Exit(0);
             }
