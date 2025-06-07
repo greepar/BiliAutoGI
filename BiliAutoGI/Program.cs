@@ -16,7 +16,7 @@ public static class Program
     private static readonly BiliApi Api = new ();
     public class ConfigInfo
     {
-        public required string BiliCookie { get; set; }
+        public string? BiliCookie { get; set; }
     }
     public static async Task Main()
     { 
@@ -26,31 +26,28 @@ public static class Program
         string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
         //读取json
         var jsonFile = Path.Combine(currentDirectory, "config.json");
+        string? biliCookie = null;
         if (File.Exists(jsonFile))
         {
+            //如果存在读取cookie
             try
             { 
                 using var jsonDoc = JsonDocument.Parse(await File.ReadAllTextAsync(jsonFile));
-                string biliCookie = jsonDoc.RootElement.GetProperty("BiliCookie").GetString() ?? "null";
+                biliCookie = jsonDoc.RootElement.GetProperty("BiliCookie").GetString() ?? null;
             }
             catch (Exception e)
             {
-                Console.WriteLine($"读取配置文件失败: {e.Message}");
-                await SaveConfig();
+                Console.WriteLine($"读取配置文件失败: {e.Message}\n将删除配置文件并重新生成");
+                File.Delete(jsonFile);
+                return;
             }
         }
         else
         {
-            await SaveConfig();
+            //如果不存在
+            Console.WriteLine("配置文件config.json不存在，登录账号后将自动生成");
         }
-        var config = new ConfigInfo()
-        {
-            BiliCookie = "null"
-        };
-        var configJson = JsonSerializer.Serialize(config, SourceGenerateContext.Default.ConfigInfo);
-        await File.WriteAllTextAsync("config.json", configJson);
-        Console.ReadKey();
-        //ffmpeg目录
+        //ffmpeg,视频目录
         string ffmpegFile = Path.Combine(currentDirectory, "ffmpeg.exe");
         string streamFile = Path.Combine(currentDirectory, "stream.mp4");
         //非Linux平台情况下的ffmpeg文件目录
@@ -63,13 +60,9 @@ public static class Program
         {
             Console.WriteLine("直播视频stream.mp4不存在，请放入同目录下");
             Console.ReadKey();
-            Environment.Exit(0);
         }
         else
         {
-            //check
-            Console.WriteLine("stream.mp4存在");
-            //check
             if (!File.Exists(ffmpegFile))
             {
                 Console.WriteLine("ffmpeg.exe不存在，请检查");
@@ -78,22 +71,18 @@ public static class Program
             }
             else
             {
-                //check
-                Console.WriteLine("ffmpeg存在");
-                //check
-                
-                //临时赋值Cookie
-                var loginSuccess = await Api.BiliLoginAsync();
+                //赋值Cookie
+                var loginSuccess = await Api.BiliLoginAsync(biliCookie);
                 if(loginSuccess)
                 {
-                    Console.WriteLine("B站登录成功");
+                    Console.WriteLine("\nB站登录成功");
                         //依赖检查完毕，开始正式程序
                      if (await IfNeedStreamNowAsync())
                      {
                          var liveInfo = await Api.StartLiveAsync();
                          if (liveInfo != null)
                          {
-                             await FfmpegController.FfmpegLiveAsync(ffmpegFile,streamFile,liveInfo.RtmpAddr,liveInfo.RtmpKey);
+                             FfmpegController.FfmpegLiveAsync(ffmpegFile,streamFile,liveInfo.RtmpAddr,liveInfo.RtmpKey);
                              Console.ReadKey();
                          }
                          else
@@ -138,19 +127,26 @@ public static class Program
                 return false;
             }
         }
-        
-        if (DateTime.Now > DateTime.Today.AddHours(22).AddMinutes(58))
-        {
-            //temp
-            return true;
-            
-            //return false;
-        }
-        return true;
+        return DateTime.Now > DateTime.Today.AddHours(22).AddMinutes(58) || true;
     }
 
-    public static async Task SaveConfig()
+    public static async Task SaveConfig(string? saveCookie)
     {
-        await File.WriteAllTextAsync("config.json", "a");
+        var config = new ConfigInfo
+        {
+            BiliCookie = saveCookie
+        };
+        var configJsonString = JsonSerializer.Serialize(config, SourceGenerateContext.Default.ConfigInfo);
+        var configFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.json");
+        try
+        {
+            await File.WriteAllTextAsync(configFilePath, configJsonString);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine("保存配置文件失败，请检查权限");
+            Console.WriteLine(e);
+            throw;
+        }
     }
 }
