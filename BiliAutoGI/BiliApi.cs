@@ -207,7 +207,7 @@ public class BiliApi
                     var rewardMessageFromJsonData = jsonDoc.RootElement.GetProperty("data").GetProperty("message").GetString();
                     var currentApiVersion = jsonDoc.RootElement.GetProperty("data").GetProperty("act_name").GetString();
                     Console.WriteLine($"当前API版本：{currentApiVersion}\n从API获取的消息:{rewardMessageFromJsonData}");
-                    if (rewardMessageFromJsonData == "查看奖励")
+                    if (rewardMessageFromJsonData == "查看奖励" || rewardMessageFromJsonData == "领取奖励")
                     {
                         return false;
                     }
