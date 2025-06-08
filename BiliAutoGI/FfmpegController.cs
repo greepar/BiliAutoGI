@@ -11,7 +11,7 @@ public static class FfmpegController
             Console.WriteLine("\n传入数据为空，可能是开播失败了...");
             return;
         }
-        Console.WriteLine($"\nffmpeg传入开始直播请求\n数据:ffmpeg文件{ffmpegFile},\n直播文件{streamFile},\nrtmp直播地址{rtmpUrl}，\n串流密钥{rtmpKey}");
+        Console.WriteLine($"\nffmpeg传入开始直播请求,当前时间{DateTime.Now}\n数据:\nffmpeg文件{ffmpegFile},\n直播文件{streamFile},\nrtmp直播地址{rtmpUrl}，\n串流密钥{rtmpKey}");
         var random = new Random();
         var randomMin = random.Next(10, 15);
         var randomSec = random.Next(10, 59);
