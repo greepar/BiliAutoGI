@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 
 namespace BiliAutoGI;
 
-//源生成以支持nativeaot
+//源生成以支持NativeAOT
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(Program.ConfigInfo))]
 public partial class SourceGenerateContext : JsonSerializerContext
@@ -88,7 +88,7 @@ public static class Program
                          }
                          else
                          {
-                             Console.WriteLine("<UNK>Cookie<UNK>");
+                             Console.WriteLine("开播失败，可能是网络错误或者其他原因");
                          }
                          Console.WriteLine("开始直播任务");
                      }
@@ -96,9 +96,18 @@ public static class Program
                      {
                          int randomDelay = new Random().Next(-70, 70);
                          Console.WriteLine("将等待到23:55开始直播任务");
-                         await Task.Delay(DateTime.Now - DateTime.Today.AddHours(23).AddMinutes(55).AddSeconds(randomDelay));
-                         // await StartLiveAsync(ffmpegFile,streamFile);
                          //等待到23:55附近开始直播
+                         await Task.Delay(DateTime.Today.AddHours(23).AddMinutes(55).AddSeconds(randomDelay) - DateTime.Now);
+                         var liveInfo = await Api.StartLiveAsync();
+                         if (liveInfo != null)
+                         {
+                             FfmpegController.FfmpegLiveAsync(ffmpegFile,streamFile,liveInfo.RtmpAddr,liveInfo.RtmpKey);
+                             Console.ReadKey();
+                         }
+                         else
+                         {
+                             Console.WriteLine("开播失败，可能是账号没有开播权限");
+                         }                         
                      }
                 }
                 else

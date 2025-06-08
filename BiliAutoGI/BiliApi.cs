@@ -98,7 +98,7 @@ public class BiliApi
                 if (isLogin)
                 {
                     //Cookie有效
-                    Console.WriteLine("\nCookie有效，正在载入...");
+                    Console.WriteLine("\nCookie有效，正在载入...\n用户名: " + jsonDoc.RootElement.GetProperty("data").GetProperty("uname").GetString());
                     return true;
                 }
                 //Cookie无效
@@ -207,7 +207,7 @@ public class BiliApi
                     var rewardMessageFromJsonData = jsonDoc.RootElement.GetProperty("data").GetProperty("message").GetString();
                     var currentApiVersion = jsonDoc.RootElement.GetProperty("data").GetProperty("act_name").GetString();
                     Console.WriteLine($"当前API版本：{currentApiVersion}\n从API获取的消息:{rewardMessageFromJsonData}");
-                    if (rewardMessageFromJsonData == "获取奖励")
+                    if (rewardMessageFromJsonData == "查看奖励")
                     {
                         return false;
                     }
