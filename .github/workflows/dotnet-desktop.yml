@@ -78,5 +78,20 @@ jobs:
     - name: Publish as NativeAOT
       run : dotnet publish
 
+    - name: Compress published output
+      run: |
+        cd BiliAutoGI/bin/Release/net9.0/${{ matrix.rid }}/publish
+        if [ "${{ matrix.ext }}" = "zip" ]; then
+          zip -r ../../../BiliAutoGI-${{ matrix.rid }}.zip .
+        else
+          tar -czvf ../../../BiliAutoGI-${{ matrix.rid }}.tar.gz .
+        fi
+      shell: bash
 
+    - name: Upload Release Artifact
+      uses: softprops/action-gh-release@v2
+      with:
+        files: BiliAutoGI/bin/Release/BiliAutoGI-${{ matrix.rid }}.${{ matrix.ext }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
